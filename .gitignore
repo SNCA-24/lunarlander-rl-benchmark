@@ -1,0 +1,9 @@
+.DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+
+results/reproduced_plots/
+results/reproduced_plots_validation/
+results/smoke_run/
+results/smoke_run_validation/

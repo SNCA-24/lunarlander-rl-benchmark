@@ -1,0 +1,17 @@
+environment: LunarLander-v3
+seed: 0
+episodes: 3
+train_max_steps: 64
+eval_episodes: 1
+output_dir: results/smoke_run
+algorithms:
+  - Vanilla_DQN
+dqn:
+  lr: 0.001
+  batch_size: 16
+  buffer_size: 512
+  gamma: 0.99
+  target_update_freq: 32
+  eps_start: 0.5
+  eps_end: 0.05
+  eps_decay: 0.001

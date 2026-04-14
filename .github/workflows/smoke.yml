@@ -1,0 +1,41 @@
+name: smoke
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  plot-repro:
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+      MPLCONFIGDIR: /tmp/matplotlib
+      XDG_CACHE_HOME: /tmp/xdg-cache
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install minimal CI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas matplotlib pytest
+
+      # CI stays on the stable, truthfully supported path:
+      # preserved CSV artifacts -> reproduced plots -> small pytest checks.
+      # Box2D / smoke execution is intentionally excluded here because it is
+      # more platform-sensitive than the validated plot reproduction path.
+      - name: Reproduce plots from committed artifacts
+        run: python scripts/reproduce_plots.py --output-dir results/reproduced_plots_ci
+
+      - name: Run minimal tests
+        run: python -m pytest -q tests/test_smoke_run.py
