@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -91,3 +92,39 @@ def test_plot_reproduction_script_generates_expected_outputs(tmp_path: Path) -> 
 
     after = sorted(path.name for path in final_benchmark_plots.glob("*.png"))
     assert before == after
+
+
+def test_smoke_run_script_falls_back_without_runtime_deps(tmp_path: Path) -> None:
+    output_dir = tmp_path / "smoke_run"
+
+    env = os.environ.copy()
+    env["LL_BENCHMARK_FORCE_SMOKE_FALLBACK"] = "1"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "smoke_run.py"),
+            "--config",
+            str(ROOT / "configs" / "smoke.yaml"),
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert "Smoke mode: artifact_fallback" in completed.stdout
+
+    training_csv = output_dir / "master_full_training.csv"
+    summary_json = output_dir / "smoke_summary.json"
+    assert training_csv.exists()
+    assert summary_json.exists()
+
+    summary = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert summary["mode"] == "artifact_fallback"
+    assert summary["fallback_reason"] == "forced_by_env"
+    assert Path(summary["output_csv"]) == training_csv

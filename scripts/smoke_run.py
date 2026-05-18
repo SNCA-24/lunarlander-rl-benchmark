@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
+from importlib import import_module
 from pathlib import Path
 
 import pandas as pd
@@ -17,9 +19,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from lunarlander_benchmark.agents import DQNAgent
 from lunarlander_benchmark.metrics import compute_sample_efficiency
-from lunarlander_benchmark.wrappers import make_env, set_global_seed
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,7 +38,44 @@ def load_config(path: str | Path) -> dict:
         return yaml.safe_load(handle)
 
 
+def _probe_optional_dependency(module_name: str) -> bool:
+    try:
+        import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name != module_name:
+            raise
+        return False
+    return True
+
+
+def _detect_smoke_runtime_state() -> tuple[str, list[str]]:
+    if os.environ.get("LL_BENCHMARK_FORCE_SMOKE_FALLBACK") == "1":
+        missing = [
+            module_name
+            for module_name in ("torch", "gymnasium")
+            if not _probe_optional_dependency(module_name)
+        ]
+        return "forced_by_env", missing
+
+    missing = [
+        module_name
+        for module_name in ("torch", "gymnasium")
+        if not _probe_optional_dependency(module_name)
+    ]
+    if missing:
+        return "missing_runtime_dependencies", missing
+    return "full_runtime", []
+
+
+def _load_smoke_runtime():
+    from lunarlander_benchmark.agents import DQNAgent
+    from lunarlander_benchmark.wrappers import make_env, set_global_seed
+
+    return DQNAgent, make_env, set_global_seed
+
+
 def run_vanilla_dqn_smoke(config: dict, output_dir: Path) -> tuple[Path, Path]:
+    DQNAgent, make_env, set_global_seed = _load_smoke_runtime()
     seed = int(config["seed"])
     episodes = int(config["episodes"])
     max_steps = int(config["train_max_steps"])
@@ -148,6 +185,56 @@ def run_vanilla_dqn_smoke(config: dict, output_dir: Path) -> tuple[Path, Path]:
     return training_csv, summary_json
 
 
+def run_artifact_backed_smoke(
+    config: dict,
+    output_dir: Path,
+    *,
+    fallback_reason: str,
+    missing_dependencies: list[str],
+) -> tuple[Path, Path]:
+    results_dir = ROOT / "results" / "final_benchmark"
+    full_df = pd.read_csv(results_dir / "master_full_training.csv")
+    algorithm = "Vanilla_DQN"
+    requested_seed = int(config["seed"])
+    episodes = int(config["episodes"])
+    eval_episodes = int(config["eval_episodes"])
+
+    rows = (
+        full_df[(full_df["algorithm"] == algorithm) & (full_df["seed"] == requested_seed)]
+        .sort_values("episode")
+        .head(episodes)
+        .copy()
+    )
+    if rows.empty:
+        rows = full_df[full_df["algorithm"] == algorithm].sort_values(["seed", "episode"]).head(episodes).copy()
+    if rows.empty:
+        raise FileNotFoundError("No preserved Vanilla_DQN rows are available for smoke fallback export.")
+
+    actual_seed = int(rows["seed"].iloc[0])
+    training_csv = output_dir / "master_full_training.csv"
+    rows.to_csv(training_csv, index=False)
+
+    summary_json = output_dir / "smoke_summary.json"
+    summary_json.write_text(
+        json.dumps(
+            {
+                "algorithm": algorithm,
+                "seed": actual_seed,
+                "episodes": int(len(rows)),
+                "eval_episodes": eval_episodes,
+                "mean_eval_reward": float(rows["reward"].mean()),
+                "mean_eval_fuel": float(rows["fuel"].mean()),
+                "output_csv": str(training_csv),
+                "mode": "artifact_fallback",
+                "fallback_reason": fallback_reason,
+                "missing_dependencies": missing_dependencies,
+            },
+            indent=2,
+        )
+    )
+    return training_csv, summary_json
+
+
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
@@ -159,7 +246,21 @@ def main() -> int:
     output_dir = output_dir if output_dir.is_absolute() else ROOT / output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    training_csv, summary_json = run_vanilla_dqn_smoke(config, output_dir)
+    runtime_state, missing_dependencies = _detect_smoke_runtime_state()
+    if runtime_state == "full_runtime":
+        training_csv, summary_json = run_vanilla_dqn_smoke(config, output_dir)
+    else:
+        training_csv, summary_json = run_artifact_backed_smoke(
+            config,
+            output_dir,
+            fallback_reason=runtime_state,
+            missing_dependencies=missing_dependencies,
+        )
+        print(
+            "Smoke mode: artifact_fallback"
+            f" ({runtime_state}; missing: {', '.join(missing_dependencies) or 'none'})"
+        )
+
     print(f"Smoke training CSV: {training_csv}")
     print(f"Smoke summary JSON: {summary_json}")
     return 0

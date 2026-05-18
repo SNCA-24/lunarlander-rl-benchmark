@@ -5,7 +5,11 @@ from __future__ import annotations
 import random
 
 import numpy as np
-import torch
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - exercised in install validation, not import-time tests
+    torch = None
 
 try:
     import gymnasium as gym
@@ -18,9 +22,10 @@ GymWrapperBase = gym.Wrapper if gym is not None else object
 def set_global_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    if torch is not None:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
 
 class FuelTrackingWrapper(GymWrapperBase):

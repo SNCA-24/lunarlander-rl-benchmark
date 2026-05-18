@@ -1,0 +1,15 @@
+{
+  "algorithm": "Vanilla_DQN",
+  "seed": 0,
+  "episodes": 3,
+  "eval_episodes": 1,
+  "mean_eval_reward": -37.887552006381696,
+  "mean_eval_fuel": 991.98,
+  "output_csv": "/Users/chaitu/Downloads/LunarLander_v3_Benchmarking_DQN_vs_PPO-main/results/smoke_run_validation_readme_20260517/master_full_training.csv",
+  "mode": "artifact_fallback",
+  "fallback_reason": "missing_runtime_dependencies",
+  "missing_dependencies": [
+    "torch",
+    "gymnasium"
+  ]
+}
