@@ -1,4 +1,4 @@
-# LunarLander-v3 RL Benchmark: DQN Variants vs PPO
+# LunarLander RL Benchmark - DQN Variants vs PPO
 
 A benchmark and evaluation repository comparing Vanilla DQN, Double DQN, Dueling DQN, PER-DQN, and PPO on Gymnasium `LunarLander-v3`, with preserved result artifacts, extracted RL modules, and a reproducible plot-regeneration path.
 
